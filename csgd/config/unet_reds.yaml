@@ -1,0 +1,39 @@
+note: trainUNet_REDS_0115
+
+# GPU CONFIG
+gpu_available: '0,1'
+gpu_num: 2
+
+# DATA PATH:
+dataset: REDS
+train_sharp: /dataset/REDS_yf/train/sharp
+train_blur: /dataset/REDS_yf/train/blur
+
+test_sharp: /dataset/REDS_yf/val/sharp
+test_blur: /dataset/REDS_yf/val/blur
+
+# TRAIN CONFIG
+lr: 0.001
+batchsize: 64
+start_epoch: 0
+save_epoch: 10
+resize_size: 0 # 0 or 256
+crop_size: 192
+step: [500, 800, 1000]
+
+# SAVE CONFIG
+model_dir: /home/zhoujundong/UNetPruneModel/model/UNet
+result_dir: /home/zhoujundong/UNetPruneModel/result/UNet
+modelName: finish.pth
+
+# FINETUNE CONFIG
+pretrained_model: None
+bestPSNR: 0
+
+# ITERATION INFO
+# max_epochs: 100000
+# base_train_max_epochs: 1000000
+
+# for test whole pipeline
+max_epochs: 1000
+base_train_max_epochs: 500
