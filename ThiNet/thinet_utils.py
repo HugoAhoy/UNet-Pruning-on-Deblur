@@ -92,7 +92,43 @@ def get_w_by_LSE(x, y):
 def get_layers(model):
     pass
 
+def get_succeeding_layers(layer):
+    pass
+
 def thinet_prune_layer(model, layer, train_loader, r, m=1000):
+    C = layer.out_channel
+    x, y = collecting_training_examples(model, layer, train_loader, m)
+    prune_subset = get_subset(x, y, r, C)
+    assert len(set(prune_subset)) == len(prune_subset) # assure no duplicate element
+
+
+    '''
+    prune the layer
+    '''
+    saved_subset = list(set(range(C))-set(prune_subset))
+    w = get_w_by_LSE(x[:,saved_subset], y)
+
+    layer.weight.data = layer.weight.data[saved_subset, ...] 
+    assert layer.weight.data.shape[1] == w.shape[0] # filter num should be the same as the element num of w
+    layer.weight.data = layer.weight.data * (w.unsqueeze(0).unsqueeze(-1).expand(layer.weight.shape))
+    layer.weight.grad = None
+
+    if layer.bias is not None:
+        layer.bias.data = layer.bias.data[saved_subset,...]
+        layer.bias.grad = None
+    
+    '''
+    prune the succeeding layer
+    '''
+    succeeding_layers = get_succeeding_layers(layer)
+    for sl in succeeding_layers:
+        sl.weight.data = sl.weight.data[:,saved_subset,...]
+        sl.weight.grad = None
+        if sl.bias is not None:
+            sl.bias.data = sl.bias.data[saved_subset,...]
+            sl.bias.grad = None
+
+    return model
 
 def save_model()
     pass
