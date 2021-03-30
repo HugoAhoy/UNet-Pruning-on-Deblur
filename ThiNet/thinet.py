@@ -9,7 +9,7 @@ from util import loadYaml, parseArgs
 args = parseArgs()
 config, saveName = loadYaml(args.config)
 
-def fine_tune(model, trainSet, testSet, epochs, optimizer, scheduler)
+def fine_tune(model, train_loader, test_loader, epochs, optimizer, scheduler)
     for e in epoch:
         avg_loss = 0.0
         idx = 0
@@ -78,10 +78,10 @@ def thinet():
         fine-tune after every layer pruning
         '''
         epoch = 2 # as mentioned in paper, fine-tune 1 or 2 epochs every pruning
-        fine_tune(model, trainSet, testSet, epoch, optimizer, scheduler)
+        fine_tune(model, train_loader, test_loader, epoch, optimizer, scheduler)
     
     epoch = 100
-    fine_tune(model, trainSet, testSet, epoch, optimizer, scheduler)
+    fine_tune(model, train_loader, test_loader, epoch, optimizer, scheduler)
 
     save_model()
     return
