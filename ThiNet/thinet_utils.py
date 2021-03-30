@@ -6,10 +6,9 @@ import random
 '''
 for get coresponding input and output
 '''
-class LayerIn:
+class hookYandX:
     self.y = []
     self.x = []
-    self.inputs = []
     def __init__(self, layer):
         self.layer = layer
         inch, outch, k, p, s = layer.in_channel, layer.out_channel, layer.kernel_size, layer.padding, layer.stride
@@ -18,7 +17,6 @@ class LayerIn:
         self.hook = layer.register_forward_hook(self.hook_fn)
     
     def hook_fn(self, module, input, output):
-        self.inputs.append(input.detach())
         if layer.bias is not None:
             output = output-layer.bias
         self.y.append(output.detach())
@@ -32,7 +30,7 @@ class LayerIn:
 collecting training examples for layer pruning
 '''
 def collecting_training_examples(model, layer, train_loader, m=1000):
-    in_and_out = LayerInAndOut(layer)
+    in_and_out = hookYandX(layer)
     inch = layer.in_channel
     model.eval()
     for i, train_data in enumerate(train_loader):
@@ -54,19 +52,32 @@ def collecting_training_examples(model, layer, train_loader, m=1000):
 
 def get_subset(x, y, r, C):
     '''
+    x:shape(sample_size, C)
+    y:shape(sample_size, 1)
     r is the compression ratio as mentioned in paper;
     C is the channel num of the filter
     '''
 
-    # T = int(C*(1-r))
-    # res = []
-    # for iter in range(T):
-    #     min_value = float('inf')
-    #     for i in range(C):
-    #         if i in res:
-    #             continue
-            
+    T = int(C*(1-r))
+    res = []
 
+    # greedy
+    for iter in range(T):
+        min_value = float('inf')
+        tempRes = None
+        for i in range(C):
+            if i in res:
+                continue
+            else:
+                tempT = res + [i]
+                mask = torch.sum(torch.eye(C)[tempT,:], dim=1, keepdim=True) # mask shape(iter, C)
+                diff = y-torch.sum(mask*x, dim=1,keepdim=True)
+                total_error = torch.sum(diff**2)
+                if total_error < min_value:
+                    min_value = total_error
+                    tempRes = tempT
+        res = tempRes
+    return res
 
 
 def get_w_by_LSE():
@@ -75,8 +86,18 @@ def get_w_by_LSE():
 def get_layers(model):
     pass
 
-def thinet_prune_layer(model, layer):
-    pass
+def thinet_prune_layer(model, layer, train_loader, r, m=1000):
+    C = layer.out_channel
+    x, y = collecting_training_examples(model, layer, train_loader, m)
+    subset = get_subset(x, y, r, C)
+    assert len(set(subset)) == len(subset) # assure no duplicate element
+    
+    '''
+    TODO:prune the layer
+    '''
+
+
+    return model
 
 def save_model()
     pass
