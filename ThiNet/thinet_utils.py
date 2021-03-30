@@ -80,24 +80,19 @@ def get_subset(x, y, r, C):
     return res
 
 
-def get_w_by_LSE():
-    pass
+def get_w_by_LSE(x, y):
+    a = torch.matmul(torch.transpose(x,0,1),x)
+    if torch.matrix_rank(a) == a.shape[0]:
+        a_inv = torch.inverse(a)
+    else:
+        a_inv = torch.pinverse(a)
+    w = torch.chain_matmul(a_inv, torch.transpose(x, 0,1), y)
+    return w
 
 def get_layers(model):
     pass
 
 def thinet_prune_layer(model, layer, train_loader, r, m=1000):
-    C = layer.out_channel
-    x, y = collecting_training_examples(model, layer, train_loader, m)
-    subset = get_subset(x, y, r, C)
-    assert len(set(subset)) == len(subset) # assure no duplicate element
-    
-    '''
-    TODO:prune the layer
-    '''
-
-
-    return model
 
 def save_model()
     pass
