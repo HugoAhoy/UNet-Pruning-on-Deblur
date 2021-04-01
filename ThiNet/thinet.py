@@ -62,6 +62,7 @@ def thinet():
 
     model = UNet(3, 3)
     model = torch.nn.DataParallel(model.cuda(), device_ids=device_ids)
+    prune_ratio = 13/16
 
     # TODO: the setting of optimizer and scheduler
     optimizer = None
@@ -70,9 +71,9 @@ def thinet():
     '''
     prune layer by layer
     '''
-    layers = get_layers(model)
-    for layer in layers:
-        model = thinet_prune_layer(model, layer)
+    conv_num = get_conv_nums(model)
+    for idx in range(conv_num):
+        model = thinet_prune_layer(model, idx, train_loader, prune_ratio)
 
         '''
         fine-tune after every layer pruning
