@@ -127,9 +127,11 @@ def test_hook_2():
     print(kernel_before)
     print(activation_kernel)
 
-    inch = layer.in_channels
+    inch = layer.out_channels
 
-    inHook = hookYandX(layer,activation_kernel=activation_kernel)
+    slayer = all_layers[sl]
+
+    inHook = hookYandX(slayer,activation_kernel=activation_kernel)
 
     c, h, w = (3, 32, 32)
     # input = torch.arange(c*h*w,dtype=torch.float32).reshape(1,c,h,w).cuda()
@@ -184,9 +186,11 @@ def test_hook_3():
     print(kernel_before)
     print(activation_kernel)
 
-    inch = layer.in_channels
+    inch = layer.out_channels
 
-    inHook = hookYandX(layer,activation_kernel=activation_kernel)
+    slayer = all_layers[sl]
+
+    inHook = hookYandX(slayer,activation_kernel=activation_kernel)
 
     c, h, w = (3, 32, 32)
     # input = torch.arange(c*h*w,dtype=torch.float32).reshape(1,c,h,w).cuda()
