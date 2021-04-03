@@ -9,14 +9,15 @@ from prune_util import unet_succeeding_strategy
 for get coresponding input and output
 '''
 class hookYandX:
-    self.y = []
-    self.x = []
     def __init__(self, layer,activation_kernel=None):
+        self.y = []
+        self.x = []
+        self.rawout = None # this is for test
         self.activation_kernel = activation_kernel
         if activation_kernel is None:
             self.activation_kernel = list(range(layer.weight.shape[1]))
-        inch = len(activation_kernel)
-        outch, k, p, s = layer.in_channel, layer.out_channel, layer.kernel_size, layer.padding, layer.stride
+        inch = len(self.activation_kernel)
+        outch, k, p, s = layer.out_channels, layer.kernel_size, layer.padding, layer.stride
         self.conv = nn.Conv2d(inch, outch,k, groups=1, padding=p, stride=s, bias=False)
         self.channel_wise = nn.Conv2d(inch, outch*inch,k, groups=inch, padding=p, stride=s, bias=False)
         self.conv.weight.data = layer.weight.data[:,self.activation_kernel,...]
@@ -24,7 +25,10 @@ class hookYandX:
         self.hook = layer.register_forward_hook(self.hook_fn)
     
     def hook_fn(self, module, input, output):
+        input = input[0]
         input = input[:,self.activation_kernel,...]
+        print(input.shape)
+        self.rawout = output
         self.conv = self.conv.cuda()
         self.y.append(self.conv(input).detach())
         self.channel_wise = self.channel_wise.cuda()
@@ -117,11 +121,11 @@ def get_conv_nums(model):
 def thinet_prune_layer(model,layer_idx, train_loader, r, m=1000):
     succeeding_strategy = unet_succeeding_strategy(4)
     succeeding_layer_idx = succeeding_strategy[layer_idx]
-    preceding_strategy = get_preceding_from_succeding(succeeding_layer_idx)
+    preceding_strategy = get_preceding_from_succeding(succeeding_strategy)
 
     all_layers = get_layers(model)
     layer = all_layers[layer_idx]
-    C = layer.out_channel
+    C = layer.out_channels
     assert C == layer.weight.shape[0] # assure the layer is pruned for the first time.
 
     '''
@@ -218,5 +222,5 @@ def thinet_prune_layer(model,layer_idx, train_loader, r, m=1000):
 
     return model
 
-def save_model()
+def save_model():
     pass
