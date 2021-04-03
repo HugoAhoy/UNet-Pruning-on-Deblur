@@ -208,6 +208,40 @@ def test_hook_3():
     print(absdiff)
     print(torch.max(absdiff))
 
+def test_hook_4():
+    model = UNet(3,3)
+    layer_idx = 16
+    all_layers = get_layers(model)
+    layer = all_layers[layer_idx]
+
+    activation_kernel = list(range(layer.in_channels))
+
+    af = activation_kernel[:64]
+    al = activation_kernel[64:]
+
+    formerHook = hookYandX(layer, af)
+    latterHook = hookYandX(layer, al)
+
+    c, h, w = (3, 32, 32)
+    # input = torch.arange(c*h*w,dtype=torch.float32).reshape(1,c,h,w).cuda()
+    input = torch.randn(1,c,h,w).cuda()
+
+    model = model.cuda()
+    model.eval()
+    with torch.no_grad():
+        model(input)
+    
+    yf = formerHook.y[0]
+    yl = latterHook.y[0]
+
+    out = yf+yl
+
+    rawout = formerHook.rawout
+
+    absdiff = torch.abs(rawout - out)
+    print(absdiff)
+    print(torch.max(absdiff))
+
 
 print("end")
 
@@ -216,4 +250,5 @@ if __name__ == "__main__":
     # test_weight_assign()
     # test_hook_1()
     # test_hook_2()
-    test_hook_3()
+    # test_hook_3()
+    test_hook_4()
