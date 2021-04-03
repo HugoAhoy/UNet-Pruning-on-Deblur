@@ -51,9 +51,51 @@ def test_weight_assign():
     print(absdiff)
     print(torch.max(diff))
 
+'''
+three scenarios for hook
+'''
+def test_hook_1():
+    '''
+    scenario 1: 1 input, 1, output(no concat)
+    '''
+    succeeding_strategy = unet_succeeding_strategy(4)
+    preceding_strategy = get_preceding_from_succeding(succeeding_strategy)
+    # print(succeeding_strategy)
+    # print(preceding_strategy)
+    model = UNet(3,3)
+    all_layers = get_layers(model)
+
+    # choose the input conv and the succeeding conv to test
+    layer_idx = 0
+    layer = all_layers[layer_idx]
+    inch = layer.in_channels
+
+    inHook = hookYandX(layer)
+
+    c, h, w = (3, 32, 32)
+    # input = torch.arange(c*h*w,dtype=torch.float32).reshape(1,c,h,w).cuda()
+    input = torch.randn(1,c,h,w).cuda()
+
+    model = model.cuda()
+    model.eval()
+    with torch.no_grad():
+        model(input)
+    y = inHook.y
+    x = inHook.x
+    rawout = inHook.rawout
+    f1 = y[0][:,0,...]
+    f2 = torch.sum(x[0][:,:inch,...], 1, keepdim=True)
+    absdiff = torch.abs(f1-f2)
+    print(rawout)
+    print(f1)
+    print(f2)
+    print(absdiff)
+    print(torch.max(absdiff))
+
 
 print("end")
 
 if __name__ == "__main__":
     # test_get_layers()
-    test_weight_assign()
+    # test_weight_assign()
+    test_hook_1()
