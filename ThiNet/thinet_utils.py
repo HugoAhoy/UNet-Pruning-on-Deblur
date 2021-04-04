@@ -14,25 +14,45 @@ class hookYandX:
         self.x = []
         self.rawout = None # this is for test
         self.activation_kernel = activation_kernel
+        self.layer = layer
         if activation_kernel is None:
             self.activation_kernel = list(range(layer.weight.shape[1]))
         inch = len(self.activation_kernel)
         outch, k, p, s = layer.out_channels, layer.kernel_size, layer.padding, layer.stride
+        self.group_kernel_index = []
+        for i in range(inch):
+            self.group_kernel_index.extend([i+j*inch for j in range(outch)])
+
+        self.group_out_reindex = []
+        for i in range(outch):
+            self.group_out_reindex.extend([i+j*outch for j in range(inch)])
+
         self.conv = nn.Conv2d(inch, outch,k, groups=1, padding=p, stride=s, bias=False)
         self.channel_wise = nn.Conv2d(inch, outch*inch,k, groups=inch, padding=p, stride=s, bias=False)
-        self.conv.weight.data = layer.weight.data[:,self.activation_kernel,...]
-        self.channel_wise.weight.data = layer.weight.data[:,self.activation_kernel,...].reshape(outch*inch, 1, k[0],k[1])
+        trimmed_weight = layer.weight.data[:,self.activation_kernel,...]
+        # for test begin
+        # kernel = torch.arange(torch.numel(layer.weight), dtype=torch.float32).reshape(layer.weight.shape)
+        # trimmed_weight = kernel[:,self.activation_kernel,...]
+        # for test end
+        self.conv.weight.data = trimmed_weight
+        self.channel_wise.weight.data = trimmed_weight.reshape(outch*inch, 1, k[0],k[1])[self.group_kernel_index]
         self.hook = layer.register_forward_hook(self.hook_fn)
     
     def hook_fn(self, module, input, output):
         input = input[0]
         input = input[:,self.activation_kernel,...]
-        print(input.shape)
-        self.rawout = output
+        print(output.shape)
+        if self.layer.bias is not None:
+            bias = self.layer.bias.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+            out_before_bias = output - bias
+            self.rawout = out_before_bias
+        else:
+            self.rawout = output
         self.conv = self.conv.cuda()
         self.y.append(self.conv(input).detach())
         self.channel_wise = self.channel_wise.cuda()
-        self.x.append(self.channel_wise(input).detach())
+        group_output = self.channel_wise(input)[:,self.group_out_reindex,...].detach()
+        self.x.append(group_output)
 
     def remove(self):
         self.hook.remove()
