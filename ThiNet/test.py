@@ -246,6 +246,25 @@ def test_hook_4():
     print(absdiff)
     print(torch.max(absdiff))
 
+def test_collecting_reshape():
+    batch, inch, outch = (2,3,4)
+    h, w = (5,5)
+    group_out = torch.randn(batch,inch*outch,h,w)
+    outs = []
+    for i in range(outch):
+        outs.append(torch.sum(group_out[:,i*inch:(i+1)*inch,...],1, keepdim=True))
+    out = torch.cat(outs,1)
+    out = out.view(-1,1)
+    sample_num = out.shape[0]
+    group_out = group_out.contiguous().view(-1, outch, inch, h, w)
+    group_out = group_out.permute(0, 1, 3, 4, 2)
+    group_out = group_out.contiguous().view(-1, inch)
+    print(out)
+    print(group_out)
+    absdiff = torch.abs(out- torch.sum(group_out,1,keepdim=True))
+    print(absdiff)
+    print(torch.max(absdiff))
+
 
 print("end")
 
@@ -255,4 +274,5 @@ if __name__ == "__main__":
     # test_hook_1()
     # test_hook_2()
     # test_hook_3()
-    test_hook_4()
+    # test_hook_4()
+    test_collecting_reshape()
