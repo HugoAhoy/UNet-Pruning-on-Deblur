@@ -41,7 +41,7 @@ class hookYandX:
     def hook_fn(self, module, input, output):
         input = input[0]
         input = input[:,self.activation_kernel,...]
-        print(output.shape)
+        # print(output.shape)
         if self.layer.bias is not None:
             bias = self.layer.bias.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
             out_before_bias = output - bias
@@ -61,27 +61,35 @@ class hookYandX:
 collecting training examples for layer pruning
 '''
 def collecting_training_examples(model, layer, train_loader,activation_kernel=None, m=1000):
-    assert activation_kernel is not None
+    # assert activation_kernel is not None
     in_and_out = hookYandX(layer)
-    inch = len(activation_kernel)
+    inch = layer.weight.shape[1]
+    if activation_kernel is not None:
+        inch = len(activation_kernel)
     model.eval()
     for i, train_data in enumerate(train_loader):
         with torch.no_grad():
             train_data['L'] = train_data['L'].cuda()
-            model(train_data['L'])
+            with torch.no_grad():
+                model(train_data['L'])
     
-    y = tf.concat(in_and_out.y,0).contiguous().view(-1,1)
+    y = torch.cat(in_and_out.y,0).contiguous().view(-1,1)
     samplesize = y.shape[0]
 
     m = min(m, samplesize)
     selected_index = random.sample(range(samplesize), m)
-    x = tf.concat(in_and_out.x, 0).contiguous().view(samplesize, inch)
+    x = torch.cat(in_and_out.x, 0)
+    b, _, h, w = x.shape
+    outch = layer.weight.shape[0]
+    x = x.contiguous().view(b, outch, inch, h, w)
+    x = x.permute(0, 1, 3, 4, 2)
+    x = x.contiguous().view(-1, inch)
 
     in_and_out.remove()
     
     y = y[selected_index,:]
     x = x[selected_index,:]
-    return (x, y), len(selected_index)
+    return x, y, len(selected_index)
 
 
 def get_subset(x, y, r, C):
