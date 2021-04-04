@@ -265,6 +265,22 @@ def test_collecting_reshape():
     print(absdiff)
     print(torch.max(absdiff))
 
+def test_collecting_training_examples():
+    model = UNet(3,3).cuda()
+    layer_idx = 5
+    all_layers = get_layers(model)
+    layer = all_layers[layer_idx]
+    train_loader = []
+    train_sample_num = 2
+    for i in range(train_sample_num):
+        train_loader.append({'L':torch.randn(1,3,32,32)})
+    x, y , sample_num = collecting_training_examples(model, layer,train_loader)
+    print("y",y)
+    print("x",x)
+    absdiff = torch.abs(y- torch.sum(x,1,keepdim=True))
+    print("absdiff",absdiff)
+    print(torch.max(absdiff))
+    
 
 print("end")
 
@@ -275,4 +291,5 @@ if __name__ == "__main__":
     # test_hook_2()
     # test_hook_3()
     # test_hook_4()
-    test_collecting_reshape()
+    # test_collecting_reshape()
+    test_collecting_training_examples()
