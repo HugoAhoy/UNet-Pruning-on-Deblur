@@ -135,13 +135,22 @@ def get_maximal_linearly_independent_system(x):
     raise Exception("maximal linearly independent system not found")
 
 def get_w_by_LSE(x, y):
-    a = torch.matmul(torch.transpose(x,0,1),x)
-    if torch.matrix_rank(a) == a.shape[0]:
-        a_inv = torch.inverse(a)
-    else:
-        a_inv = torch.pinverse(a)
-    w = torch.chain_matmul(a_inv, torch.transpose(x, 0,1), y)
-    return w
+    mlis = get_maximal_linearly_independent_system(x)
+    x = x[:, mlis]
+    assert torch.matrix_rank(x) == x.shape[1]
+    '''
+    raw implementation
+    '''
+    # a = torch.matmul(torch.transpose(x,0,1),x)
+    # a_inv = torch.inverse(a)
+    # w = torch.chain_matmul(a_inv, torch.transpose(x, 0,1), y)
+
+    '''
+    now use torch.lstsq() to substitue the implemetation.
+    because according to the test, the result are almost same, only negligible diff.
+    '''
+    w = torch.lstsq(y,x)[0][:x.shape[1]]
+    return w, mlis
 
 def get_layers(model):
     layers = []
@@ -221,7 +230,8 @@ def thinet_prune_layer(model,layer_idx, train_loader, r, m=1000):
     prune the layer
     '''
     saved_subset = list(set(range(C))-set(prune_subset))
-    w = get_w_by_LSE(x[:,saved_subset], y)
+    w, mlis = get_w_by_LSE(x[:,saved_subset], y)
+    saved_subset = [saved_subset[i] for i in mlis]
     w = w.unsqueeze(0).unsqueeze(-1) #shape(1,len(saved_subset),1,1)
 
     layer.weight.data = layer.weight.data[saved_subset, ...]
