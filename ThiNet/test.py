@@ -299,7 +299,20 @@ def test_LSE():
     print("absdiff",absdiff)
     print(torch.max(absdiff))
 
-
+def test_LSE_when_not_full_rank():
+    m, n = 100,30
+    A = torch.randn(m,n)
+    B = torch.randn(m,1)
+    
+    A[:,3] = A[:,4]+A[:,5]
+    A[:,0] = A[:,7]+A[:,10]+A[:,21]
+    print(torch.matrix_rank(A))
+    w, mlis = get_w_by_LSE(A, B)
+    print(w)
+    print(mlis)
+    diff = B - torch.mm(A[:,mlis],w)
+    print(diff**2)
+    print(torch.max(diff**2))
     
 
 print("end")
@@ -313,4 +326,5 @@ if __name__ == "__main__":
     # test_hook_4()
     # test_collecting_reshape()
     # test_collecting_training_examples()
-    test_LSE()
+    # test_LSE()
+    test_LSE_when_not_full_rank()
