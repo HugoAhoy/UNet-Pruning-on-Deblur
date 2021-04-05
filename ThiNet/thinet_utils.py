@@ -4,6 +4,7 @@ import torch.nn as nn
 import random
 from prune_util import get_preceding_from_succeding, get_filter_num_by_layer
 from prune_util import unet_succeeding_strategy
+from itertools import combinations
 
 '''
 for get coresponding input and output
@@ -121,6 +122,17 @@ def get_subset(x, y, r, C):
         res = tempRes
     return res
 
+def get_maximal_linearly_independent_system(x):
+    assert x.shape[0] >= x.shape[1]
+    rank = torch.matrix_rank(x)
+
+    if rank == x.shape[1]:
+        return list(range(x.shape[1]))
+
+    for i in combinations(range(x.shape[1]),rank):
+        if torch.matrix_rank(x[:,i]) == rank:
+            return i
+    raise Exception("maximal linearly independent system not found")
 
 def get_w_by_LSE(x, y):
     a = torch.matmul(torch.transpose(x,0,1),x)
