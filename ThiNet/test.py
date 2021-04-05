@@ -280,6 +280,26 @@ def test_collecting_training_examples():
     absdiff = torch.abs(y- torch.sum(x,1,keepdim=True))
     print("absdiff",absdiff)
     print(torch.max(absdiff))
+
+def test_get_subset():
+    pass
+
+def test_LSE():
+    m, n = 10,3
+    A = torch.randn(m,n)
+    B = torch.randn(m,1)
+    res1 = torch.lstsq(B, A)[0][:n]
+    print(res1)
+    res2 = get_w_by_LSE(A, B)
+    print(res1.shape)
+    print(res2.shape)
+    print("res1",res1)
+    print("res2",res2)
+    absdiff = torch.abs(res1-res2)
+    print("absdiff",absdiff)
+    print(torch.max(absdiff))
+
+
     
 
 print("end")
@@ -292,4 +312,5 @@ if __name__ == "__main__":
     # test_hook_3()
     # test_hook_4()
     # test_collecting_reshape()
-    test_collecting_training_examples()
+    # test_collecting_training_examples()
+    test_LSE()
