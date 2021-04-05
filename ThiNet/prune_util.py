@@ -31,7 +31,7 @@ def unet_succeeding_strategy(n):
             result[i] = [i+1, totalconv - 2 - i]
         else:
             result[i] = [i+1]
-    
+    result[totalconv-1] = []
     return result
 
 if __name__ == "__main__":

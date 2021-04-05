@@ -170,6 +170,8 @@ def get_conv_nums(model):
 def thinet_prune_layer(model,layer_idx, train_loader, r, m=1000):
     succeeding_strategy = unet_succeeding_strategy(4)
     succeeding_layer_idx = succeeding_strategy[layer_idx]
+    if succeeding_layer_idx == []: # this means the layer is output layer, don't need prune.
+        return model
     preceding_strategy = get_preceding_from_succeding(succeeding_strategy)
 
     all_layers = get_layers(model)
