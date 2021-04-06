@@ -314,6 +314,24 @@ def test_LSE_when_not_full_rank():
     print(diff**2)
     print(torch.max(diff**2))
     
+def test_thinet_prune(layer_idx):
+    model = UNet(3,3).cuda()
+    train_loader = []
+    train_sample_num = 2
+    r = 13/16
+    for i in range(train_sample_num):
+        train_loader.append({'L':torch.randn(2,3,32,32)})
+    newmodel = thinet_prune_layer(model, layer_idx, train_loader, r)
+    print(newmodel is model)
+
+    # test if the pruned model can properly inference.
+    input = torch.randn(2,3,32,32).cuda()
+    model(input)
+    print("inference ok")
+
+    for n, p in model.named_parameters():
+        print(n, p.shape)
+
 
 print("end")
 
@@ -327,4 +345,6 @@ if __name__ == "__main__":
     # test_collecting_reshape()
     # test_collecting_training_examples()
     # test_LSE()
-    test_LSE_when_not_full_rank()
+    # test_LSE_when_not_full_rank()
+    test_thinet_prune(1)
+    test_thinet_prune(15)
