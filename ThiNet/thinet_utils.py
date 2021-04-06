@@ -277,6 +277,3 @@ def thinet_prune_layer(model,layer_idx, train_loader, r, m=1000):
         all_layers[sl].weight.grad = None
 
     return model
-
-def save_model():
-    pass
