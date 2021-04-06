@@ -63,7 +63,7 @@ collecting training examples for layer pruning
 '''
 def collecting_training_examples(model, layer, train_loader,activation_kernel=None, m=1000):
     # assert activation_kernel is not None
-    in_and_out = hookYandX(layer)
+    in_and_out = hookYandX(layer, activation_kernel)
     inch = layer.weight.shape[1]
     if activation_kernel is not None:
         inch = len(activation_kernel)
@@ -113,7 +113,8 @@ def get_subset(x, y, r, C):
                 continue
             else:
                 tempT = res + [i]
-                mask = torch.sum(torch.eye(C)[tempT,:], dim=1, keepdim=True) # mask shape(iter, C)
+                mask = torch.ones(1, C)-torch.sum(torch.eye(C)[tempT,:], dim=0, keepdim=True)
+                mask = mask.cuda() # mask shape (1, C-len(tempT))
                 diff = y-torch.sum(mask*x, dim=1,keepdim=True)
                 total_error = torch.sum(diff**2)
                 if total_error < min_value:
@@ -122,9 +123,10 @@ def get_subset(x, y, r, C):
         res = tempRes
     return res
 
-def get_maximal_linearly_independent_system(x):
+def get_maximal_linearly_independent_system(x, max_tries=1000):
     assert x.shape[0] >= x.shape[1]
     rank = torch.matrix_rank(x)
+    try_count = 0
 
     if rank == x.shape[1]:
         return list(range(x.shape[1]))
@@ -132,10 +134,15 @@ def get_maximal_linearly_independent_system(x):
     for i in combinations(range(x.shape[1]),rank):
         if torch.matrix_rank(x[:,i]) == rank:
             return i
+        try_count += 1
+        if try_count >= max_tries:
+            return -1
     raise Exception("maximal linearly independent system not found")
 
 def get_w_by_LSE(x, y):
     mlis = get_maximal_linearly_independent_system(x)
+    if mlis == -1:
+        return torch.ones(x.shape[1],1).cuda(), list(range(x.shape[1]))
     x = x[:, mlis]
     assert torch.matrix_rank(x) == x.shape[1]
     '''
@@ -222,8 +229,8 @@ def thinet_prune_layer(model,layer_idx, train_loader, r, m=1000):
     for i in range(len(x_list)):
         x_list[i] = x_list[i][:min_sample_num,...]
         y_list[i] = y_list[i][:min_sample_num,...]
-    x = torch.concat(x_list,0)
-    y = torch.concat(y_list,0)
+    x = torch.cat(x_list,0)
+    y = torch.cat(y_list,0)
     prune_subset = get_subset(x, y, r, C)
     assert len(set(prune_subset)) == len(prune_subset) # assure no duplicate element
 
@@ -237,7 +244,7 @@ def thinet_prune_layer(model,layer_idx, train_loader, r, m=1000):
     w = w.unsqueeze(0).unsqueeze(-1) #shape(1,len(saved_subset),1,1)
 
     layer.weight.data = layer.weight.data[saved_subset, ...]
-    assert layer.weight.data.shape[1] == w.shape[0] # filter num should be the same as the element num of w
+    assert layer.weight.data.shape[0] == w.shape[1] # filter num should be the same as the element num of w
     layer.weight.grad = None
 
     if layer.bias is not None:
@@ -268,9 +275,6 @@ def thinet_prune_layer(model,layer_idx, train_loader, r, m=1000):
 
         all_layers[sl].weight.data = saved_weight
         all_layers[sl].weight.grad = None
-        if sl.bias is not None:
-            sl.bias.data = sl.bias.data[kernel_saved_subset]
-            sl.bias.grad = None
 
     return model
 
