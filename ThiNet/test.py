@@ -332,6 +332,25 @@ def test_thinet_prune(layer_idx):
     for n, p in model.named_parameters():
         print(n, p.shape)
 
+def test_thinet_prune_all():
+    model = UNet(3,3).cuda()
+    train_loader = []
+    train_sample_num = 2
+    r = 13/16
+    for i in range(train_sample_num):
+        train_loader.append({'L':torch.randn(2,3,32,32)})
+
+    conv_num = get_conv_nums(model)
+    for idx in range(conv_num):
+        print("prune layer {}".format(idx))
+        model = thinet_prune_layer(model, idx, train_loader, r)    
+        # test if the pruned model can properly inference.
+        input = torch.randn(2,3,32,32).cuda()
+        model(input)
+        print("inference ok")
+        for n, p in model.named_parameters():
+            print(n, p.shape)
+        print("-"*30)
 
 print("end")
 
@@ -346,5 +365,6 @@ if __name__ == "__main__":
     # test_collecting_training_examples()
     # test_LSE()
     # test_LSE_when_not_full_rank()
-    test_thinet_prune(1)
-    test_thinet_prune(15)
+    # test_thinet_prune(1)
+    # test_thinet_prune(15)
+    test_thinet_prune_all()
