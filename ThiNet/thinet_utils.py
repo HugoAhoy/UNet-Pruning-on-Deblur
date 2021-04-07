@@ -13,51 +13,59 @@ class hookYandX:
     def __init__(self, layer,activation_kernel=None):
         # self.y = []
         self.x = []
+        self.input = []
         self.rawout = None # this is for test
         self.activation_kernel = activation_kernel
         self.layer = layer
         if activation_kernel is None:
             self.activation_kernel = list(range(layer.weight.shape[1]))
-        inch = len(self.activation_kernel)
-        outch, k, p, s = layer.out_channels, layer.kernel_size, layer.padding, layer.stride
-        self.group_kernel_index = []
-        for i in range(inch):
-            self.group_kernel_index.extend([i+j*inch for j in range(outch)])
-
-        self.group_out_reindex = []
-        for i in range(outch):
-            self.group_out_reindex.extend([i+j*outch for j in range(inch)])
+        self.inch = len(self.activation_kernel)
+        self.outch, self.k, p, s = layer.out_channels, layer.kernel_size, layer.padding, layer.stride
 
         # self.conv = nn.Conv2d(inch, outch,k, groups=1, padding=p, stride=s, bias=False)
-        self.channel_wise = nn.Conv2d(inch, outch*inch,k, groups=inch, padding=p, stride=s, bias=False)
-        trimmed_weight = layer.weight.data[:,self.activation_kernel,...]
+        self.channel_wise = nn.Conv2d(self.inch, self.inch,self.k, groups=self.inch, padding=p, stride=s, bias=False)
+        self.trimmed_weight = layer.weight.data[:,self.activation_kernel,...]
         # for test begin
         # kernel = torch.arange(torch.numel(layer.weight), dtype=torch.float32).reshape(layer.weight.shape)
         # trimmed_weight = kernel[:,self.activation_kernel,...]
         # for test end
         # self.conv.weight.data = trimmed_weight
-        self.channel_wise.weight.data = trimmed_weight.reshape(outch*inch, 1, k[0],k[1])[self.group_kernel_index]
-        self.hook = layer.register_forward_hook(self.hook_fn)
     
     def hook_fn(self, module, input, output):
         input = input[0]
-        input = input[:,self.activation_kernel,...].detach()
-        # print(output.shape)
-        # if self.layer.bias is not None:
-        #     bias = self.layer.bias.detach().unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
-        #     out_before_bias = output - bias
-        #     self.rawout = out_before_bias.detach().cpu()
-        # else:
-        #     self.rawout = output.detach().cpu()
-        with torch.no_grad():
-            # self.conv = self.conv.cuda()
-            # self.y.append(self.conv(input).detach().cpu())
+        input = input[:,self.activation_kernel,...].detach().cpu()
+        self.input.append(input)
+    
+    def get_x(self, gpu_id):
+        '''
+        .cuda(input.device) make sure the conv weight and input are on same cuda device
+        '''
+        f = random.sample(range(self.outch), len(self.input)) # choose one filter each batch
+        for i in range(len(self.input)):
+            device = gpu_id
+            input = self.input[-1].cuda(device)
+            self.input.pop()
+            
+            self.channel_wise.weight.data = self.trimmed_weight[f[i]].reshape(self.inch, 1, self.k[0],self.k[1])
+            self.channel_wise = self.channel_wise.to(device).eval()
+            with torch.no_grad():
+                group_output = self.channel_wise(input)
+                group_output = group_output.detach().cpu()
+
             '''
-            .cuda(input.device) make sure the conv weight and input are on same cuda device
+            each input get one sample point
             '''
-            self.channel_wise = self.channel_wise.cuda(input.device) 
-            group_output = self.channel_wise(input).detach().cpu()[:,self.group_out_reindex,...]
-            self.x.append(group_output)
+            out = []
+            sample_num = group_output.shape[0]
+            h = random.sample(range(group_output.shape[2]), sample_num)
+            w = random.sample(range(group_output.shape[3]), sample_num)
+            for k in range(sample_num):
+                out.append(group_output[k, :,h[i],w[i]].reshape(1,self.inch))
+
+            self.x.extend(out)
+
+    def register(self):
+        self.hook = self.layer.register_forward_hook(self.hook_fn)
 
     def remove(self):
         self.hook.remove()
@@ -65,7 +73,7 @@ class hookYandX:
 '''
 collecting training examples for layer pruning
 '''
-def collecting_training_examples(model, layer, train_loader,activation_kernel=None, m=1000):
+def collecting_training_examples(model, layer, train_loader, gpu_id,activation_kernel=None, m=1000):
     print("collecting training examples.")
     # assert activation_kernel is not None
     in_and_out = hookYandX(layer, activation_kernel)
@@ -76,29 +84,28 @@ def collecting_training_examples(model, layer, train_loader,activation_kernel=No
     total_sample = 0
     for i, train_data in enumerate(train_loader):
         with torch.no_grad():
+            in_and_out.register()
             train_data['L'] = train_data['L'].cuda()
             model(train_data['L'])
+            in_and_out.remove()
         total_sample += train_data['L'].shape[0]
         print("inference {} samples".format(total_sample))
+        in_and_out.get_x(gpu_id)
         if total_sample > m:
             break
 
-    in_and_out.remove()
-
     x = torch.cat(in_and_out.x, 0)
-    b, _, h, w = x.shape
-    outch = layer.weight.shape[0]
-    x = x.contiguous().view(b, outch, inch, h, w)
-    x = x.permute(0, 1, 3, 4, 2)
-    x = x.contiguous().view(-1, inch)
+    del in_and_out
+    torch.cuda.empty_cache()
     samplesize = x.shape[0]
     
     m = min(m, samplesize)
-    selected_index = random.sample(range(samplesize), m)
-    
-    x = x[selected_index,:].cuda()
+    if m != samplesize:
+        selected_index = random.sample(range(samplesize), m)
+        x = x[selected_index,:].cuda()
+
     y = torch.sum(x,1,keepdim=True)
-    return x, y, len(selected_index)
+    return x, y, m
 
 
 def get_subset(x, y, r, C):
@@ -185,7 +192,7 @@ def get_conv_nums(model):
     return num
 
 
-def thinet_prune_layer(model,layer_idx, train_loader, r, m=1000):
+def thinet_prune_layer(model,layer_idx, train_loader, r, gpu_id, m=1000):
     succeeding_strategy = unet_succeeding_strategy(4)
     succeeding_layer_idx = succeeding_strategy[layer_idx]
     if succeeding_layer_idx == []: # this means the layer is output layer, don't need prune.
@@ -229,7 +236,7 @@ def thinet_prune_layer(model,layer_idx, train_loader, r, m=1000):
                 else:
                     break
             activation_kernel = list(range(kernel_before, kernel_before+C))
-        tempx, tempy, sample_num = collecting_training_examples(model, all_layers[sl], train_loader,activation_kernel, m)
+        tempx, tempy, sample_num = collecting_training_examples(model, all_layers[sl], train_loader, gpu_id,activation_kernel, m)
         min_sample_num = min(min_sample_num, sample_num)
         x_list.append(tempx)
         y_list.append(tempy)

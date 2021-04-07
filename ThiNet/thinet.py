@@ -7,6 +7,7 @@ from torch.optim import lr_scheduler
 from util import loadYaml, parseArgs
 import os
 from visdom import Visdom
+import dataset.util as util
 
 args = parseArgs()
 config, saveName = loadYaml(args.config)
@@ -73,12 +74,22 @@ def fine_tune(model, criterion, train_loader, test_loader, fine_tune_epochs, opt
                     bestPSNR = avg_PSNR
                     torch.save(model, os.path.join(save_dir,"{}.pth".format(training_label)))
 
+def print_model(model):
+    for n, p in model.named_parameters():
+        print(n, p.shape)
+
+
 def thinet():
     '''
     basic settings and model
     '''
     os.environ['CUDA_VISIBLE_DEVICES'] = config['gpu_available']
-    device_ids = range(config['gpu_num'])
+    # leave 1 gpu for inference when hook
+    gpu_id_for_hook = config['gpu_num'] -1
+    if config['gpu_num'] == 1:
+        device_ids = range(config['gpu_num'])
+    else:
+        device_ids = range(config['gpu_num']-1)
     trainSet = GoProDataset(sharp_root=config['train_sharp'], blur_root=config['train_blur'],
                             resize_size=config['resize_size'], patch_size=config['crop_size'],
                             phase='train')
@@ -102,11 +113,13 @@ def thinet():
     criterion = torch.nn.L1Loss()
 
     model = UNet(3, 3)
+    model.load_state_dict(torch.load(config['pretrained_model']))
+    print("load weight from path:{}".format(config['pretrained_model']))
     model = torch.nn.DataParallel(model.cuda(), device_ids=device_ids)
+    print_model(model)
     prune_ratio = config['prune_ratio']
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
-    scheduler = None
+    finetune_epoch = 10
 
     '''
     prune layer by layer
@@ -124,13 +137,18 @@ def thinet():
             model = torch.load(model_path)
             continue
 
-        model = thinet_prune_layer(model, idx, train_loader, prune_ratio)
+        model = thinet_prune_layer(model, idx, train_loader, prune_ratio, gpu_id_for_hook)
+        print("-"*35)
+        print_model(model)
+        print("-"*35)
 
         '''
         fine-tune after every layer pruning
         '''
-        finetune_epoch = 10
-        fine_tune(model, train_loader, test_loader, finetune_epoch, optimizer, scheduler, viz, training_label, save_dir)
+        optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
+        scheduler = lr_scheduler.StepLR(optimizer, finetune_epoch+1, gamma=0.1, last_epoch=-1)
+        fine_tune(model,criterion, train_loader, test_loader, finetune_epoch, optimizer, scheduler, viz, training_label, save_dir)
+        print("-"*35)
     
     # final finetune
     training_label = "final"
@@ -139,8 +157,9 @@ def thinet():
         model = torch.load(model_path)
 
     epoch = 200
+    optimizer = torch.optim.Adam(model.parameters(), lr=config['lr'])
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=config['step'], gamma=0.5)  # learning rates
-    fine_tune(model, train_loader, test_loader, epoch, optimizer, scheduler, viz, training_label, save_dir)
+    fine_tune(model,criterion, train_loader, test_loader, epoch, optimizer, scheduler, viz, training_label, save_dir)
 
     return
 
