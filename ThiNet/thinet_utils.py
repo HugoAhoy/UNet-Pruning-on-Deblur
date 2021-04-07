@@ -52,7 +52,10 @@ class hookYandX:
         with torch.no_grad():
             # self.conv = self.conv.cuda()
             # self.y.append(self.conv(input).detach().cpu())
-            self.channel_wise = self.channel_wise.cuda()
+            '''
+            .cuda(input.device) make sure the conv weight and input are on same cuda device
+            '''
+            self.channel_wise = self.channel_wise.cuda(input.device) 
             group_output = self.channel_wise(input).detach().cpu()[:,self.group_out_reindex,...]
             self.x.append(group_output)
 
@@ -77,7 +80,7 @@ def collecting_training_examples(model, layer, train_loader,activation_kernel=No
             model(train_data['L'])
         total_sample += train_data['L'].shape[0]
         print("inference {} samples".format(total_sample))
-        if total_sample > 100:
+        if total_sample > m:
             break
 
     in_and_out.remove()
