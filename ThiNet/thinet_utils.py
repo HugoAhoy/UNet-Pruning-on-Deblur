@@ -11,7 +11,7 @@ for get coresponding input and output
 '''
 class hookYandX:
     def __init__(self, layer,activation_kernel=None):
-        self.y = []
+        # self.y = []
         self.x = []
         self.rawout = None # this is for test
         self.activation_kernel = activation_kernel
@@ -28,32 +28,33 @@ class hookYandX:
         for i in range(outch):
             self.group_out_reindex.extend([i+j*outch for j in range(inch)])
 
-        self.conv = nn.Conv2d(inch, outch,k, groups=1, padding=p, stride=s, bias=False)
+        # self.conv = nn.Conv2d(inch, outch,k, groups=1, padding=p, stride=s, bias=False)
         self.channel_wise = nn.Conv2d(inch, outch*inch,k, groups=inch, padding=p, stride=s, bias=False)
         trimmed_weight = layer.weight.data[:,self.activation_kernel,...]
         # for test begin
         # kernel = torch.arange(torch.numel(layer.weight), dtype=torch.float32).reshape(layer.weight.shape)
         # trimmed_weight = kernel[:,self.activation_kernel,...]
         # for test end
-        self.conv.weight.data = trimmed_weight
+        # self.conv.weight.data = trimmed_weight
         self.channel_wise.weight.data = trimmed_weight.reshape(outch*inch, 1, k[0],k[1])[self.group_kernel_index]
         self.hook = layer.register_forward_hook(self.hook_fn)
     
     def hook_fn(self, module, input, output):
         input = input[0]
-        input = input[:,self.activation_kernel,...]
+        input = input[:,self.activation_kernel,...].detach()
         # print(output.shape)
-        if self.layer.bias is not None:
-            bias = self.layer.bias.unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
-            out_before_bias = output - bias
-            self.rawout = out_before_bias
-        else:
-            self.rawout = output
-        self.conv = self.conv.cuda()
-        self.y.append(self.conv(input).detach())
-        self.channel_wise = self.channel_wise.cuda()
-        group_output = self.channel_wise(input)[:,self.group_out_reindex,...].detach()
-        self.x.append(group_output)
+        # if self.layer.bias is not None:
+        #     bias = self.layer.bias.detach().unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        #     out_before_bias = output - bias
+        #     self.rawout = out_before_bias.detach().cpu()
+        # else:
+        #     self.rawout = output.detach().cpu()
+        with torch.no_grad():
+            # self.conv = self.conv.cuda()
+            # self.y.append(self.conv(input).detach().cpu())
+            self.channel_wise = self.channel_wise.cuda()
+            group_output = self.channel_wise(input).detach().cpu()[:,self.group_out_reindex,...]
+            self.x.append(group_output)
 
     def remove(self):
         self.hook.remove()
@@ -62,34 +63,38 @@ class hookYandX:
 collecting training examples for layer pruning
 '''
 def collecting_training_examples(model, layer, train_loader,activation_kernel=None, m=1000):
+    print("collecting training examples.")
     # assert activation_kernel is not None
     in_and_out = hookYandX(layer, activation_kernel)
     inch = layer.weight.shape[1]
     if activation_kernel is not None:
         inch = len(activation_kernel)
     model.eval()
+    total_sample = 0
     for i, train_data in enumerate(train_loader):
         with torch.no_grad():
             train_data['L'] = train_data['L'].cuda()
-            with torch.no_grad():
-                model(train_data['L'])
-    
-    y = torch.cat(in_and_out.y,0).contiguous().view(-1,1)
-    samplesize = y.shape[0]
+            model(train_data['L'])
+        total_sample += train_data['L'].shape[0]
+        print("inference {} samples".format(total_sample))
+        if total_sample > 100:
+            break
 
-    m = min(m, samplesize)
-    selected_index = random.sample(range(samplesize), m)
+    in_and_out.remove()
+
     x = torch.cat(in_and_out.x, 0)
     b, _, h, w = x.shape
     outch = layer.weight.shape[0]
     x = x.contiguous().view(b, outch, inch, h, w)
     x = x.permute(0, 1, 3, 4, 2)
     x = x.contiguous().view(-1, inch)
-
-    in_and_out.remove()
+    samplesize = x.shape[0]
     
-    y = y[selected_index,:]
-    x = x[selected_index,:]
+    m = min(m, samplesize)
+    selected_index = random.sample(range(samplesize), m)
+    
+    x = x[selected_index,:].cuda()
+    y = torch.sum(x,1,keepdim=True)
     return x, y, len(selected_index)
 
 
@@ -100,6 +105,7 @@ def get_subset(x, y, r, C):
     r is the compression ratio as mentioned in paper;
     C is the channel num of the filter
     '''
+    print("computing the prune subset.")
 
     T = int(C*(1-r))
     res = []
@@ -127,6 +133,7 @@ def get_maximal_linearly_independent_system(x, max_tries=1000):
     assert x.shape[0] >= x.shape[1]
     rank = torch.matrix_rank(x)
     try_count = 0
+    print("getting the maximal linearly independent system. col {}, rank {}".format(x.shape[1], rank))
 
     if rank == x.shape[1]:
         return list(range(x.shape[1]))
@@ -140,6 +147,7 @@ def get_maximal_linearly_independent_system(x, max_tries=1000):
     raise Exception("maximal linearly independent system not found")
 
 def get_w_by_LSE(x, y):
+    print("getting w by LSE")
     mlis = get_maximal_linearly_independent_system(x)
     if mlis == -1:
         return torch.ones(x.shape[1],1).cuda(), list(range(x.shape[1]))
@@ -238,6 +246,7 @@ def thinet_prune_layer(model,layer_idx, train_loader, r, m=1000):
     '''
     prune the layer
     '''
+    print("pruning layer")
     saved_subset = list(set(range(C))-set(prune_subset))
     w, mlis = get_w_by_LSE(x[:,saved_subset], y)
     saved_subset = [saved_subset[i] for i in mlis]
@@ -254,6 +263,7 @@ def thinet_prune_layer(model,layer_idx, train_loader, r, m=1000):
     '''
     prune the succeeding layer
     '''
+    print("pruning succeeding layer's kernel")
     for sl in succeeding_layer_idx:
         precedding_layers = preceding_strategy[sl]
         kernel_before = 0
