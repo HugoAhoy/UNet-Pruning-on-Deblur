@@ -5,6 +5,7 @@ import random
 from prune_util import get_preceding_from_succeding, get_filter_num_by_layer
 from prune_util import unet_succeeding_strategy
 from itertools import combinations
+import math
 
 '''
 for get coresponding input and output
@@ -57,8 +58,21 @@ class hookYandX:
             '''
             out = []
             sample_num = group_output.shape[0]
-            h = random.sample(range(group_output.shape[2]), sample_num)
-            w = random.sample(range(group_output.shape[3]), sample_num)
+            '''
+            when the feature map is small, the sample num may be bigger then h and w,
+            so if the h or w < sample num, I generate the duplicate range, to enable the sampling.
+            '''
+            duph = math.ceil(sample_num/group_output.shape[2])
+            dupw = math.ceil(sample_num/group_output.shape[3])
+            hrange = range(group_output.shape[2])
+            wrange = range(group_output.shape[3])
+            if duph > 1:
+                hrange = list(hrange)*duph
+            if dupw > 1:
+                wrange = list(wrange)*dupw
+            
+            h = random.sample(hrange, sample_num)
+            w = random.sample(wrange, sample_num)
             for k in range(sample_num):
                 out.append(group_output[k, :,h[i],w[i]].reshape(1,self.inch))
 
