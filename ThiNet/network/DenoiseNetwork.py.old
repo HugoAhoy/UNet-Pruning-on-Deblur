@@ -1,0 +1,96 @@
+import torch.nn as nn
+import torch.nn.functional as F
+from network.lightLayers import *
+
+
+class DenoiseNet(nn.Module):
+
+    def __init__(self, inChannels, outChannels):
+        super(DenoiseNet, self).__init__()
+        self.n_channels = inChannels
+        self.n_classes = outChannels
+
+        self.inc = nn.Conv2d(inChannels, 16, kernel_size=3, padding=1)
+        self.down1 = nn.Sequential(
+            Downsample(16, 32),
+            Encoder(32, 32),
+            #Downsample(16, 64),
+            #Encoder(64, 64)
+        )
+        self.down2 = nn.Sequential(
+            Downsample(32, 64),
+            Encoder(64, 64),
+            #Downsample(64, 128),
+            #Encoder(128, 128)
+        )
+        self.down3 = nn.Sequential(
+            Downsample(64, 128),
+            Encoder(128, 128),
+            Encoder(128, 128),
+            Encoder(128, 128),
+            #Downsample(128, 256),
+            #Encoder(256, 256),
+            #Encoder(256, 256),
+            #Encoder(256, 256),
+        )
+        self.down4 = nn.Sequential(
+            Downsample(128, 256),
+            Encoder(256, 256),
+            Encoder(256, 256),
+            Encoder(256, 256),
+            #Downsample(256, 512),
+            #Encoder(512, 512),
+            #Encoder(512, 512),
+            #Encoder(512, 512)
+        )
+
+        # large
+        #self.up1 = Up(512,256,256) #(512, 64, 256)
+        #self.up2 = Up(256,128,128) #(64, 32, 128)
+        #self.up3 = Up(128,64,64) #(32, 32, 64)
+        #self.up4 = Up(64,16,16) #(32, 32, 64)
+
+        # for small encoder
+        self.up1 = Up(256, 64, 128)
+        self.up2 = Up(64, 32, 64)
+        self.up3 = Up(32, 32, 32)
+        self.up4 = Up(32, 16, 16)
+
+        # origin
+        #self.up1 = Up(512, 64, 256)
+        #self.up2 = Up(64, 32, 128)
+        #self.up3 = Up(32, 32, 64)
+        #self.up4 = Up(32, 16, 16)
+
+        self.outc = nn.Sequential(
+            Decoder(16, 16),
+            nn.Conv2d(16, 3, kernel_size=3, padding=1)
+        )
+
+    def forward(self, input):
+        x1 = self.inc(input)
+        x2 = self.down1(x1)
+        x3 = self.down2(x2)
+        x4 = self.down3(x3)
+        x5 = self.down4(x4)
+
+        x = self.up1(x5, x4)
+        x = self.up2(x, x3)
+        x = self.up3(x, x2)
+        x = self.up4(x, x1)
+        logits = self.outc(x) + input
+        return logits
+
+
+if __name__ == '__main__':
+    #from torchstat import stat
+    net = DenoiseNet(3, 3)
+    #stat(net, (3, 3000, 4000))
+
+    from ptflops import get_model_complexity_info
+    macs, params = get_model_complexity_info(net, (3, 3000, 4000), as_strings=True,
+                                             print_per_layer_stat=True, verbose=True)
+    print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
+    print('{:<30}  {:<8}'.format('Number of parameters: ', params))
+
+
