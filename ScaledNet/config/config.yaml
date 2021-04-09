@@ -1,0 +1,39 @@
+note: trainScaledUNet0408
+
+# GPU CONFIG
+gpu_available: '4,5'
+gpu_num: 2
+
+# DATA PATH:
+dataset: GoPro
+train_sharp: /mnt/data/zhoujundong/GoPro_wzr/train/sharp
+train_blur: /mnt/data/zhoujundong/GoPro_wzr/train/blur
+
+test_sharp: /mnt/data/zhoujundong/GoPro_wzr/test/sharp
+test_blur: /mnt/data/zhoujundong/GoPro_wzr/test/blur
+
+# TRAIN CONFIG
+lr: 0.001
+batchsize: 64
+start_epoch: 0
+save_epoch: 10
+resize_size: 0 # 0 or 256
+crop_size: 192
+step: [500, 800, 1000]
+
+# SAVE CONFIG
+model_dir: /mnt/data/zhoujundong/ScaledUNet/
+modelName: finish.pth
+
+# FINETUNE CONFIG
+# pretrained_model: None
+pretrained_model: None
+bestPSNR: 0
+
+# SCALE RATIO
+scaleup: 13
+scaledown: 16
+
+# ITERATION INFO
+# max_epochs: 100000
+# base_train_max_epochs: 1000000
