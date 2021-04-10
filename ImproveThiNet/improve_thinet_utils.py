@@ -85,24 +85,48 @@ class hookYandX:
         self.hook.remove()
 
 class FilterChannelSelection:
-    def __init__(self, x, y, decay_factor=1, min_channel_ratio = 1):
-        self.decay_factor = 1
+    def __init__(self, x, y, gpu_id,decay_factor=1, min_channel_ratio = 1):
+        assert decay_factor != 0
+        self.decay_factor = decay_factor
         self.min_channel = int(min_channel_ratio*x.shape[1])
         self.channel_num = x.shape[1]
         if self.min_channel <= 0:
             self.min_channel = 1
-        self.x = x
-        self.y = y
+        self.x = x.cuda(gpu_id)
+        self.y = y.cuda(gpu_id)
         self.err = 0
         self.errdiff = 0
+        self.tempErr = 0
         self.T = []
+        self.tempT = []
+        self.update()
     
     def update(self):
-        pass
+        if len(self.T) +self.min_channel >= self.channel_num:
+            self.errdiff = float('inf')
+
+        # greedy
+        self.T = self.tempT
+        self.err =self.tempErr
+        min_value = float('inf')
+        tempRes = None
+        for i in range(self.channel_num):
+            if i in self.T:
+                continue
+            else:
+                tempT = self.T + [i]
+                mask = torch.ones(1, C)-torch.sum(torch.eye(C)[tempT,:], dim=0, keepdim=True)
+                mask = mask.cuda() # mask shape (1, C-len(tempT))
+                diff = self.y-torch.sum(mask*self.x, dim=1,keepdim=True)
+                total_error = torch.sum(diff**2)
+                if total_error < min_value:
+                    min_value = total_error
+                    tempRes = tempT
+        self.tempT = tempRes
+        self.tempErr = min_value
+        self.errdiff = self.tempErr - self.err
 
     def getErrGain(self):
-        if len(self.T) +self.min_channel >= self.channel_num:
-            return float('inf')
         return self.errdiff * decay_factor
 
 '''
@@ -177,41 +201,11 @@ def getFilterChannelSelections(model, hooks, train_loader, gpu_id,activation_ker
             y_list[i] = y_list[i][:min_sample_num,...]
         x = torch.cat(x_list,0)
         y = torch.cat(y_list,0)
-        filter_channel_selections[idx] = FilterChannelSelection(x, y, pow(decay_factor,conv_nums-idx), min_channel_ratio)
+        filter_channel_selections[idx] = FilterChannelSelection(x, y, gpu_id,pow(decay_factor,conv_nums-idx), min_channel_ratio)
     
     return filter_channel_selections
 
 
-def get_subset(x, y, r, C):
-    '''
-    x:shape(sample_size, C)
-    y:shape(sample_size, 1)
-    r is the compression ratio as mentioned in paper;
-    C is the channel num of the filter
-    '''
-    print("computing the prune subset.")
-
-    T = int(C*(1-r))
-    res = []
-
-    # greedy
-    for iter in range(T):
-        min_value = float('inf')
-        tempRes = None
-        for i in range(C):
-            if i in res:
-                continue
-            else:
-                tempT = res + [i]
-                mask = torch.ones(1, C)-torch.sum(torch.eye(C)[tempT,:], dim=0, keepdim=True)
-                mask = mask.cuda() # mask shape (1, C-len(tempT))
-                diff = y-torch.sum(mask*x, dim=1,keepdim=True)
-                total_error = torch.sum(diff**2)
-                if total_error < min_value:
-                    min_value = total_error
-                    tempRes = tempT
-        res = tempRes
-    return res
 
 def get_layers(model):
     layers = []
@@ -269,64 +263,24 @@ def thinet_prune_layer(model, train_loader, r, gpu_id, min_channel_ratio, decay_
     hooks = add_hooks(model)
     fcs_dict = getFilterChannelSelections(model, hooks, train_loader, gpu_id, m,decay_factor,min_channel_ratio):
     filter_nums = get_filter_nums(model)
+    
+    '''get the subset'''
     for iter in range(int(filter_nums*(1-r))):
-        '''TODO:get the subset'''
+        min_val = float('inf')
+        selected_idx = -1
         for idx, fcs in fcs_dict.items():
-            fcs.getErrGain()
-        pass
+            errGain = fcs.getErrGain()
+            if errGain < min_val:
+                min_val = errGain
+                selected_idx = idx
+        fcs_dict[selected_idx].update()
     
     '''
     after getting the subset, 2 choices: #1,prune it;#2,use the structure to train from scratch.
+    but because the previous experiment prove that on deblur task, the conclusion in "rethinking ..." 
+    still works. So here I straight forward using the pruned stuctrue rather than the weight.
     '''
 
-
-    # WARNING:below is the original code, remember to delete it
-
-    prune_subset = get_subset(x, y, r, C)
-    assert len(set(prune_subset)) == len(prune_subset) # assure no duplicate element
-
-
     '''
-    prune the layer
+    TODO:generate the structure from fcs_dict
     '''
-    print("pruning layer")
-    saved_subset = list(set(range(C))-set(prune_subset))
-    w, mlis = get_w_by_LSE(x[:,saved_subset], y)
-    saved_subset = [saved_subset[i] for i in mlis]
-    w = w.unsqueeze(0).unsqueeze(-1) #shape(1,len(saved_subset),1,1)
-
-    layer.weight.data = layer.weight.data[saved_subset, ...]
-    assert layer.weight.data.shape[0] == w.shape[1] # filter num should be the same as the element num of w
-    layer.weight.grad = None
-
-    if layer.bias is not None:
-        layer.bias.data = layer.bias.data[saved_subset]
-        layer.bias.grad = None
-    
-    '''
-    prune the succeeding layer
-    '''
-    print("pruning succeeding layer's kernel")
-    for sl in succeeding_layer_idx:
-        precedding_layers = preceding_strategy[sl]
-        kernel_before = 0
-        # this snippet can handle concat more than 2 inputs, not only 2
-        if len(precedding_layers) > 1:
-            for pl in precedding_layers:
-                if layer_idx > pl:
-                    kernel_before += all_layers[pl].weight.shape[0]
-                else:
-                    break
-        offset_prune_subset = [kernel_before+i for i in prune_subset]
-        all_kernels = all_layers[sl].weight.shape[1]
-        kernel_saved_subset = list(set(range(all_kernels))-set(offset_prune_subset))
-        saved_weight = all_layers[sl].weight.data[:,kernel_saved_subset,...]
-
-        # scaling it by w
-        scaling_kernel = list(range(kernel_before, kernel_before+len(saved_subset)))
-        saved_weight[:,scaling_kernel,...] = saved_weight[:,scaling_kernel,...]*w
-
-        all_layers[sl].weight.data = saved_weight
-        all_layers[sl].weight.grad = None
-
-    return model
