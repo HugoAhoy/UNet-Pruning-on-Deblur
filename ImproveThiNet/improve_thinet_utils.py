@@ -128,6 +128,13 @@ class FilterChannelSelection:
 
     def getErrGain(self):
         return self.errdiff * decay_factor
+    
+    def getRank(self):
+        saved_subset = list(set(range(self.channel_num))-set(self.T))
+        return torch.matrix_rank(self.x[:,saved_subset])
+    
+    def getSavedChannelNum(self):
+        return self.channel_num - len(self.T)
 
 '''
 collecting training examples for layer pruning
@@ -278,9 +285,29 @@ def thinet_prune_layer(model, train_loader, r, gpu_id, min_channel_ratio, decay_
     '''
     after getting the subset, 2 choices: #1,prune it;#2,use the structure to train from scratch.
     but because the previous experiment prove that on deblur task, the conclusion in "rethinking ..." 
-    still works. So here I straight forward using the pruned stuctrue rather than the weight.
+    still works. So here I straight forward use the pruned stuctrue to train from scratch, 
+    rather than using the weight to fine-tune.
+    And based the found in LSE, here use rank to furthe squeeze the model width.
     '''
 
     '''
     TODO:generate the structure from fcs_dict
     '''
+    # raw version
+    all_layers = get_layers(model)
+    filter_dict = {}
+    for i, layer in enumerate(all_layers):
+        filter_dict[i] = layer.weight.shape[0]
+    
+    for idx, fcs in fcs_dict.items():
+        filter_dict[idx] = fcs.getSavedChannelNum()
+    
+    # use rank to further reduce width
+    filter_dict_with_rank = {}
+    for i, layer in enumerate(all_layers):
+        filter_dict_with_rank[i] = layer.weight.shape[0]
+    
+    for idx, fcs in fcs_dict.items():
+        filter_dict_with_rank[idx] = fcs.getRank()
+    
+    return filter_dict, filter_dict_with_rank
