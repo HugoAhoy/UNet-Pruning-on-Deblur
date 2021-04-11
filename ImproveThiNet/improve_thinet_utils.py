@@ -266,7 +266,7 @@ def add_hooks(model):
         hooks[idx] = layer_hook
     return hooks
 
-def thinet_prune_layer(model, train_loader, r, gpu_id, min_channel_ratio, decay_factor, m=1000):
+def improve_thinet_pruned_structure(model, train_loader, r, gpu_id, min_channel_ratio, decay_factor, m=1000):
     hooks = add_hooks(model)
     fcs_dict = getFilterChannelSelections(model, hooks, train_loader, gpu_id, m,decay_factor,min_channel_ratio):
     filter_nums = get_filter_nums(model)
