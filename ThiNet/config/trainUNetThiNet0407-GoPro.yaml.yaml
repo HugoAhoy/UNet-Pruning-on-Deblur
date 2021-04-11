@@ -1,0 +1,41 @@
+note: trainUNetThiNet0407
+
+# GPU CONFIG
+gpu_available: '4,5,6'
+gpu_num: 3
+
+# DATA PATH:
+dataset: GoPro
+train_sharp: /mnt/data/zhoujundong/GoPro_wzr/train/sharp
+train_blur: /mnt/data/zhoujundong/GoPro_wzr/train/blur
+
+test_sharp: /mnt/data/zhoujundong/GoPro_wzr/test/sharp
+test_blur: /mnt/data/zhoujundong/GoPro_wzr/test/blur
+
+# TRAIN CONFIG
+prune_ratio: 0.8125
+lr: 0.001
+batchsize: 64
+start_epoch: 0
+save_epoch: 10
+resize_size: 0 # 0 or 256
+crop_size: 192
+step: [500, 800, 1000]
+
+# SAVE CONFIG
+model_dir: /home/zhoujundong/UNetPruneModel/model/UNet
+result_dir: /home/zhoujundong/UNetPruneModel/result/UNet
+modelName: finish.pth
+
+# FINETUNE CONFIG
+# pretrained_model: None
+pretrained_model: /home/zhoujundong/UNetPrune/csgd_exps/unet_slim_5-8_csgd/itr2/pruned.pth
+bestPSNR: 0
+
+# ITERATION INFO
+# max_epochs: 100000
+# base_train_max_epochs: 1000000
+
+# for test whole pipeline
+max_epochs: 1000
+base_train_max_epochs: 1500
