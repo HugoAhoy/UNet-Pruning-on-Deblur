@@ -7,7 +7,7 @@ from prune_util import parse_filternum_dict
 class ArbitaryUNet(nn.Module):
 
     def __init__(self, inChannels, outChannels, filternum_dict, bilinear=True):
-        super(UNet, self).__init__()
+        super(ArbitaryUNet, self).__init__()
         self.stage = ((len(filternum_dict)-1)//2 - 1)//2
         self.n_channels = inChannels
         self.n_classes = outChannels
