@@ -209,7 +209,7 @@ def getFilterChannelSelections(model, hooks, train_loader, gpu_id, m=1000,decay_
             y_list[i] = y_list[i][:min_sample_num,...]
         x = torch.cat(x_list,0)
         y = torch.cat(y_list,0)
-        filter_channel_selections[idx] = FilterChannelSelection(x, y, gpu_id,pow(decay_factor,conv_nums-idx), min_channel_ratio)
+        filter_channel_selections[idx] = FilterChannelSelection(x, y, gpu_id,pow(decay_factor,idx), min_channel_ratio)
     
     return filter_channel_selections
 
