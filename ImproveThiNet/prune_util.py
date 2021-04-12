@@ -51,7 +51,7 @@ Return the setting of inconv, down, up, outconv
 all stuff are in namedtuple
 '''
 
-def parse_filternum_dict(filternum_dict)
+def parse_filternum_dict(filternum_dict):
     stage = ((len(filternum_dict) -1) //2-1)//2
     succeeding_strategy = unet_succeeding_strategy(stage)
     preceding_strategy = get_preceding_from_succeding(preceding_strategy)

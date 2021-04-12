@@ -94,6 +94,7 @@ class FilterChannelSelection:
             self.min_channel = 1
         self.x = x.cuda(gpu_id)
         self.y = y.cuda(gpu_id)
+        self.gpu_id = gpu_id
         self.err = 0
         self.errdiff = 0
         self.tempErr = 0
@@ -115,8 +116,8 @@ class FilterChannelSelection:
                 continue
             else:
                 tempT = self.T + [i]
-                mask = torch.ones(1, C)-torch.sum(torch.eye(C)[tempT,:], dim=0, keepdim=True)
-                mask = mask.cuda() # mask shape (1, C-len(tempT))
+                mask = torch.ones(1, self.channel_num)-torch.sum(torch.eye(self.channel_num)[tempT,:], dim=0, keepdim=True)
+                mask = mask.cuda(self.gpu_id) # mask shape (1, C-len(tempT))
                 diff = self.y-torch.sum(mask*self.x, dim=1,keepdim=True)
                 total_error = torch.sum(diff**2)
                 if total_error < min_value:
@@ -127,7 +128,7 @@ class FilterChannelSelection:
         self.errdiff = self.tempErr - self.err
 
     def getErrGain(self):
-        return self.errdiff * decay_factor
+        return self.errdiff * self.decay_factor
     
     def getRank(self):
         saved_subset = list(set(range(self.channel_num))-set(self.T))
@@ -153,7 +154,7 @@ def collecting_training_examples(hook, m=1000):
     y = torch.sum(x,1,keepdim=True)
     return x, y, m
 
-def getFilterChannelSelections(model, hooks, train_loader, gpu_id,activation_kernel=None, m=1000,decay_factor = 1,min_channel_ratio = 1):
+def getFilterChannelSelections(model, hooks, train_loader, gpu_id, m=1000,decay_factor = 1,min_channel_ratio = 1):
     print("collecting training examples")
     # assert activation_kernel is not None
     conv_nums = get_conv_nums(model)
@@ -177,7 +178,7 @@ def getFilterChannelSelections(model, hooks, train_loader, gpu_id,activation_ker
                 hook.get_x(gpu_id)
                 torch.cuda.empty_cache()
 
-        if total_sample > m:
+        if total_sample >= m:
             break
 
     '''
@@ -242,7 +243,7 @@ def add_hooks(model):
     all_layers = get_layers(model)
     hooks = {}
     for idx, layer in enumerate(all_layers):
-        succeeding_layer_idx = succeeding_strategy[layer_idx]
+        succeeding_layer_idx = succeeding_strategy[idx]
         if succeeding_layer_idx == []: # this means the layer is output layer, don't need prune.
             continue
         C = layer.out_channels
@@ -256,20 +257,21 @@ def add_hooks(model):
             if len(precedding_layers) > 1:
                 kernel_before = 0
                 for pl in precedding_layers:
-                    if layer_idx > pl:
+                    if idx > pl:
                         kernel_before += all_layers[pl].weight.shape[0]
                     else:
                         break
                 activation_kernel = list(range(kernel_before, kernel_before+C))
-            layer_hook[sl] = hookYandX(model, all_layers[sl], activation_kernel)
+            layer_hook[sl] = hookYandX(all_layers[sl], activation_kernel)
 
         hooks[idx] = layer_hook
     return hooks
 
 def improve_thinet_pruned_structure(model, train_loader, r, gpu_id, min_channel_ratio, decay_factor, m=1000):
     hooks = add_hooks(model)
-    fcs_dict = getFilterChannelSelections(model, hooks, train_loader, gpu_id, m,decay_factor,min_channel_ratio):
+    fcs_dict = getFilterChannelSelections(model, hooks, train_loader, gpu_id, m,decay_factor,min_channel_ratio)
     filter_nums = get_filter_nums(model)
+    print("total filter num is {}".format(filter_nums))
     
     '''get the subset'''
     for iter in range(int(filter_nums*(1-r))):
@@ -280,6 +282,7 @@ def improve_thinet_pruned_structure(model, train_loader, r, gpu_id, min_channel_
             if errGain < min_val:
                 min_val = errGain
                 selected_idx = idx
+        print("iter:{}, select {}".format(iter, selected_idx))
         fcs_dict[selected_idx].update()
     
     '''
