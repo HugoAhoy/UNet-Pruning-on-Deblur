@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch.nn.functional as F
 # from network.layers import *
-from network.namedlayers import *
+from network.arbitaryLayers import *
 from prune_util import parse_filternum_dict
 
 class ArbitaryUNet(nn.Module):
@@ -13,6 +13,7 @@ class ArbitaryUNet(nn.Module):
         self.n_classes = outChannels
         self.bilinear = bilinear
         settings = parse_filternum_dict(filternum_dict)
+        print(settings)
 
         incsetting = settings['inc']
         self.inc = DoubleConv(incsetting.inch, incsetting.out, incsetting.mid)
@@ -23,21 +24,21 @@ class ArbitaryUNet(nn.Module):
 
         for i in range(1, self.stage+1):
             upsetting = settings['up{}'.format(i)]
-            setattr(self,'up{}'.format(i), Up(downsetting.inch, downsetting.out, mid_channels=downsetting.mid))
+            setattr(self,'up{}'.format(i), Up(upsetting.inch, upsetting.out, mid_channels=upsetting.mid))
 
         outsetting = settings['out']
         self.outc = OutConv(outsetting.inch, outsetting.out)
 
     def forward(self, x):
-        outs = []
+        out = {}
         out['x0'] = self.inc(x)
         for i in range(1, self.stage+1):
             out['x{}'.format(i)] = getattr(self, 'down{}'.format(i))(out['x{}'.format(i-1)])
         
         x = out['x{}'.format(self.stage)]
-        for i in range(self.stage):
-            x = getattr(self, 'up{}'.format(i))(x, out['x{}'.format(stage-i)])
-
+        for i in range(1,self.stage+1):
+            x = getattr(self, 'up{}'.format(i))(x, out['x{}'.format(self.stage-i)])
+        del out
         logits = self.outc(x)
         return logits
 

@@ -54,7 +54,9 @@ all stuff are in namedtuple
 def parse_filternum_dict(filternum_dict):
     stage = ((len(filternum_dict) -1) //2-1)//2
     succeeding_strategy = unet_succeeding_strategy(stage)
-    preceding_strategy = get_preceding_from_succeding(preceding_strategy)
+    preceding_strategy = get_preceding_from_succeding(succeeding_strategy)
+    print(succeeding_strategy)
+    print(preceding_strategy)
 
     DoubleConvSetting = namedtuple('DoubleConvSetting', ['inch','out', 'mid'])
     ConvSetting = namedtuple('ConvSetting',['inch','out'])
@@ -70,11 +72,11 @@ def parse_filternum_dict(filternum_dict):
             inch += filternum_dict[j]
 
         mid = 0
-        for j in preceding_strategy[2+i*2]:
+        for j in preceding_strategy[2+i*2+1]:
             mid += filternum_dict[j]
 
         out = filternum_dict[2+i*2+1]
-        settingdict['down{}'.format(i)] = DoubleConvSetting(inch, mid, out)
+        settingdict['down{}'.format(i+1)] = DoubleConvSetting(inch, out, mid)
 
     for i in range(stage, stage*2):
         inch = 0
@@ -82,13 +84,16 @@ def parse_filternum_dict(filternum_dict):
             inch += filternum_dict[j]
 
         mid = 0
-        for j in preceding_strategy[2+i*2]:
+        for j in preceding_strategy[2+i*2+1]:
             mid += filternum_dict[j]
 
         out = filternum_dict[2+i*2+1]
-        settingdict['up{}'.format(i-stage)] = DoubleConvSetting(inch, mid, out)
+        settingdict['up{}'.format(i-stage+1)] = DoubleConvSetting(inch, out, mid)
     
-    outconv_in = filternum_dict(len(filternum_dict)-1)
-    settingdict['out'] = ConvSetting(outconv_in, 3)
+    outconv_in = 0
+    last_idx = len(filternum_dict)-1
+    for j in preceding_strategy[last_idx]:
+        outconv_in += filternum_dict[j]
+    settingdict['out'] = ConvSetting(outconv_in, filternum_dict[last_idx])
 
     return settingdict
