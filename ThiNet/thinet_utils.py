@@ -105,7 +105,7 @@ def collecting_training_examples(model, layer, train_loader, gpu_id,activation_k
         total_sample += train_data['L'].shape[0]
         print("inference {} samples".format(total_sample))
         in_and_out.get_x(gpu_id)
-        if total_sample > m:
+        if total_sample >= m:
             break
 
     x = torch.cat(in_and_out.x, 0)
