@@ -125,13 +125,13 @@ def improve_thinet():
     '''
     get pruned structure for one-shot
     '''
-    pruned_filter_dict, pruned_filter_dict_thinner = improve_thinet_pruned_structure(model, train_loader, r, gpu_id, min_channel_ratio, decay_factor)
+    pruned_filter_dict, pruned_filter_dict_thinner = improve_thinet_pruned_structure(model, train_loader, prune_ratio, gpu_id_for_hook, min_channel_ratio, decay_factor)
     print("pruned_filter_dict:",pruned_filter_dict)
     print("pruned_filter_dict_thinner:",pruned_filter_dict_thinner)
 
     
-    # train from scratch
-    # Net1
+    '''train from scratch'''
+    '''Net1'''
     training_label = "pruned_structure"
     print("training {}".format(training_label))
     model_path = os.path.join(save_dir, "{}.pth".format(training_label))
@@ -144,7 +144,7 @@ def improve_thinet():
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=config['step'], gamma=0.5)  # learning rates
     fine_tune(net,criterion, train_loader, test_loader, epoch, optimizer, scheduler, viz, training_label, save_dir)
 
-    # Net2
+    '''Net2'''
     training_label = "thinner_pruned_structure"
     print("training {}".format(training_label))
     model_path = os.path.join(save_dir, "{}.pth".format(training_label))
