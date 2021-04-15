@@ -74,7 +74,7 @@ class hookYandX:
             h = random.sample(hrange, sample_num)
             w = random.sample(wrange, sample_num)
             for k in range(sample_num):
-                out.append(group_output[k, :,h[i],w[i]].reshape(1,self.inch))
+                out.append(group_output[k, :,h[k],w[k]].reshape(1,self.inch))
 
             self.x.extend(out)
 
@@ -105,6 +105,7 @@ class FilterChannelSelection:
     def update(self):
         if len(self.T) +self.min_channel >= self.channel_num:
             self.errdiff = float('inf')
+            return
 
         # greedy
         self.T = self.tempT
@@ -150,7 +151,7 @@ def collecting_training_examples(hook, m=1000):
     if m != samplesize:
         selected_index = random.sample(range(samplesize), m)
         x = x[selected_index,:].cuda()
-
+    
     y = torch.sum(x,1,keepdim=True)
     return x, y, m
 
@@ -167,19 +168,20 @@ def getFilterChannelSelections(model, hooks, train_loader, gpu_id, m=1000,decay_
             
     total_sample = 0
     model.eval()
-    for i, train_data in enumerate(train_loader):
-        with torch.no_grad():
-            train_data['L'] = train_data['L'].cuda()
-            model(train_data['L'])
-        total_sample += train_data['L'].shape[0]
-        print("inference {} samples".format(total_sample))
-        for layer_hook in hooks.values():
-            for hook in layer_hook.values():
-                hook.get_x(gpu_id)
-                torch.cuda.empty_cache()
+    while total_sample < m:
+        for i, train_data in enumerate(train_loader):
+            with torch.no_grad():
+                train_data['L'] = train_data['L'].cuda()
+                model(train_data['L'])
+            total_sample += train_data['L'].shape[0]
+            print("inference {} samples".format(total_sample))
+            for layer_hook in hooks.values():
+                for hook in layer_hook.values():
+                    hook.get_x(gpu_id)
+                    torch.cuda.empty_cache()
 
-        if total_sample >= m:
-            break
+            if total_sample >= m:
+                break
 
     '''
     remove hooks
@@ -213,7 +215,12 @@ def getFilterChannelSelections(model, hooks, train_loader, gpu_id, m=1000,decay_
     
     return filter_channel_selections
 
-
+def show_zero_col(fcs):
+    total = 0
+    for i in range(fcs.x.shape[1]):
+        if torch.nonzero(fcs.x[:,i]).shape[0] == 0:
+            total += 1
+    print(total)
 
 def get_layers(model):
     layers = []
@@ -273,15 +280,22 @@ def improve_thinet_pruned_structure(model, train_loader, r, gpu_id, min_channel_
     filter_nums = get_filter_nums(model)
     print("total filter num is {}".format(filter_nums))
     
+    for idx, fcs in fcs_dict.items():
+        print(idx, "zero col is:")
+        show_zero_col(fcs)
+
     '''get the subset'''
     for iter in range(int(filter_nums*(1-r))):
         min_val = float('inf')
         selected_idx = -1
+        tempView = []
         for idx, fcs in fcs_dict.items():
             errGain = fcs.getErrGain()
+            tempView.append(float('inf') if errGain == float('inf') else errGain.item())
             if errGain < min_val:
                 min_val = errGain
                 selected_idx = idx
+        print(tempView)
         print("iter:{}, select {}".format(iter, selected_idx))
         fcs_dict[selected_idx].update()
     
