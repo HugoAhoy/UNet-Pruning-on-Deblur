@@ -41,8 +41,12 @@ class hookYandX:
         '''
         .cuda(input.device) make sure the conv weight and input are on same cuda device
         '''
-        f = random.sample(range(self.outch), len(self.input)) # choose one filter each batch
+        print("total tensors:{}".format(len(self.input)))
+        multiple = math.ceil(len(self.input)/self.outch)
+        frange = list(range(self.outch))*multiple
+        f = random.sample(frange, len(self.input)) # choose one filter each batch
         for i in range(len(self.input)):
+            print(i)
             device = gpu_id
             input = self.input[-1].cuda(device)
             self.input.pop()
@@ -175,13 +179,15 @@ def getFilterChannelSelections(model, hooks, train_loader, gpu_id, m=1000,decay_
                 model(train_data['L'])
             total_sample += train_data['L'].shape[0]
             print("inference {} samples".format(total_sample))
-            for layer_hook in hooks.values():
-                for hook in layer_hook.values():
-                    hook.get_x(gpu_id)
-                    torch.cuda.empty_cache()
 
             if total_sample >= m:
                 break
+
+    for layer_key, layer_hook in hooks.items():
+        for hook_key, hook in layer_hook.items():
+            print("processing {} {}".format(layer_key,hook_key))
+            hook.get_x(gpu_id)
+            torch.cuda.empty_cache()
 
     '''
     remove hooks
@@ -286,6 +292,7 @@ def improve_thinet_pruned_structure(model, train_loader, r, gpu_id, min_channel_
 
     '''get the subset'''
     for iter in range(int(filter_nums*(1-r))):
+        minset = []
         min_val = float('inf')
         selected_idx = -1
         tempView = []
@@ -294,7 +301,10 @@ def improve_thinet_pruned_structure(model, train_loader, r, gpu_id, min_channel_
             tempView.append(float('inf') if errGain == float('inf') else errGain.item())
             if errGain < min_val:
                 min_val = errGain
-                selected_idx = idx
+                minset = [idx]
+            elif errGain == min_val:
+                minset.append(idx)
+        selected_idx = random.sample(minset,1)[0]
         print(tempView)
         print("iter:{}, select {}".format(iter, selected_idx))
         fcs_dict[selected_idx].update()

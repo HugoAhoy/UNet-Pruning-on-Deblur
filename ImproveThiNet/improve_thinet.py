@@ -87,10 +87,11 @@ def improve_thinet():
     os.environ['CUDA_VISIBLE_DEVICES'] = config['gpu_available']
     # leave 1 gpu for inference when hook
     gpu_id_for_hook = config['gpu_num'] -1
-    if config['gpu_num'] == 1:
-        device_ids = range(config['gpu_num'])
-    else:
-        device_ids = range(config['gpu_num']-1)
+    # if config['gpu_num'] == 1:
+    #     device_ids = range(config['gpu_num'])
+    # else:
+    #     device_ids = range(config['gpu_num']-1)
+    device_ids = range(config['gpu_num']-1)
     trainSet = GoProDataset(sharp_root=config['train_sharp'], blur_root=config['train_blur'],
                             resize_size=config['resize_size'], patch_size=config['crop_size'],
                             phase='train')
@@ -107,7 +108,7 @@ def improve_thinet():
                              drop_last=False, pin_memory=True)
     
     viz = Visdom(env=saveName)
-    save_dir = "./pruned_models"
+    save_dir = "/mnt/data/zhoujundong/improve_thinet/{}_{}_pruned_models".format(config['su'],config['sd'])
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
@@ -132,30 +133,37 @@ def improve_thinet():
     
     '''train from scratch'''
     '''Net1'''
-    training_label = "pruned_structure"
+    training_label = "{}_{}_pruned_structure".format(config['su'],config['sd'])
     print("training {}".format(training_label))
     model_path = os.path.join(save_dir, "{}.pth".format(training_label))
     net = ArbitaryUNet(3,3,pruned_filter_dict)
     if os.path.exists(model_path):
         net = torch.load(model_path)
+    net = torch.nn.DataParallel(net.cuda(), device_ids=device_ids)
+    print_model(net)
 
     epoch = 10000
     optimizer = torch.optim.Adam(net.parameters(), lr=config['lr'])
     scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=config['step'], gamma=0.5)  # learning rates
-    fine_tune(net,criterion, train_loader, test_loader, epoch, optimizer, scheduler, viz, training_label, save_dir)
+    train(net,criterion, train_loader, test_loader, epoch, optimizer, scheduler, viz, training_label, save_dir)
 
     '''Net2'''
-    training_label = "thinner_pruned_structure"
-    print("training {}".format(training_label))
-    model_path = os.path.join(save_dir, "{}.pth".format(training_label))
-    net = ArbitaryUNet(3,3,pruned_filter_dict_thinner)
-    if os.path.exists(model_path):
-        net = torch.load(model_path)
+    '''
+    trainning one net only
+    if you want to train the thinner net, 
+    comment the net1 part and uncomment the statements below
+    '''
+    # training_label = "thinner_pruned_structure"
+    # print("training {}".format(training_label))
+    # model_path = os.path.join(save_dir, "{}.pth".format(training_label))
+    # net = ArbitaryUNet(3,3,pruned_filter_dict_thinner)
+    # if os.path.exists(model_path):
+    #     net = torch.load(model_path)
 
-    epoch = 10000
-    optimizer = torch.optim.Adam(net.parameters(), lr=config['lr'])
-    scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=config['step'], gamma=0.5)  # learning rates
-    fine_tune(net,criterion, train_loader, test_loader, epoch, optimizer, scheduler, viz, training_label, save_dir)
+    # epoch = 10000
+    # optimizer = torch.optim.Adam(net.parameters(), lr=config['lr'])
+    # scheduler = lr_scheduler.MultiStepLR(optimizer, milestones=config['step'], gamma=0.5)  # learning rates
+    # train(net,criterion, train_loader, test_loader, epoch, optimizer, scheduler, viz, training_label, save_dir)
 
     return
 
